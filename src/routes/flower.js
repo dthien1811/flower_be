@@ -1,9 +1,9 @@
 // ================================
 // FILE: be/src/routes/flower.js
 // ================================
-import express from "express";
-import flowerController from "../controllers/flowerController";
-import uploadFlowerImages from "../middleware/uploadFlowerImages";
+const express = require("express");
+const flowerController = require("../controllers/flowerController");
+const uploadFlowerImages = require("../middleware/uploadFlowerImages");
 
 const router = express.Router();
 
@@ -21,12 +21,8 @@ router.put("/:id", flowerController.updateFlower);
 router.delete("/:id", flowerController.deleteFlower);
 
 // ===== IMAGES =====
-// FE phải gửi multipart với field name = "images"
 router.post("/:id/images", uploadFlowerImages.array("images", 10), flowerController.addFlowerImages);
-
 router.delete("/images/:id", flowerController.deleteFlowerImage);
-
-// set main/cover
 router.post("/images/:id/set-cover", flowerController.setFlowerImageCover);
 
-export default router;
+module.exports = router;

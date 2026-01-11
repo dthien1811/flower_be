@@ -1,19 +1,15 @@
-import useApiService from "../service/useApiService";
+const useApiService = require("../service/useApiService");
 
-// tạo auditMeta từ request (không cần middleware)
 const getAuditMeta = (req) => {
-  // nếu chưa login/auth thì actorUserId = null
-  // sau này có middleware, bạn set req.user.id vào đây là chuẩn nhất
   const actorUserId = req?.user?.id || null;
 
   return {
     actorUserId,
     ipAddress: req.headers["x-forwarded-for"] || req.socket?.remoteAddress || null,
-    userAgent: req.headers["user-agent"] || null
+    userAgent: req.headers["user-agent"] || null,
   };
 };
 
-// [GET] /api/users?page&limit&search&sortBy&sortOrder&status
 const readUsers = async (req, res) => {
   try {
     const result = await useApiService.getUsers(req.query);
@@ -24,7 +20,6 @@ const readUsers = async (req, res) => {
   }
 };
 
-// [POST] /api/users
 const createUser = async (req, res) => {
   try {
     const created = await useApiService.createUser(req.body, getAuditMeta(req));
@@ -35,7 +30,6 @@ const createUser = async (req, res) => {
   }
 };
 
-// [PUT] /api/users/:id
 const updateUser = async (req, res) => {
   try {
     const updated = await useApiService.updateUser(req.params.id, req.body, getAuditMeta(req));
@@ -47,7 +41,6 @@ const updateUser = async (req, res) => {
   }
 };
 
-// [DELETE] /api/users/:id  (SOFT DELETE)
 const deleteUser = async (req, res) => {
   try {
     await useApiService.deleteUser(req.params.id, getAuditMeta(req));
@@ -58,7 +51,6 @@ const deleteUser = async (req, res) => {
   }
 };
 
-// [GET] /api/groups
 const readGroups = async (req, res) => {
   try {
     const result = await useApiService.getGroups();

@@ -2,9 +2,9 @@
 // FILE: be/src/controllers/flowerController.js
 // (NO slugify package needed)
 // ================================
-import fs from "fs";
-import path from "path";
-import db from "../models";
+const fs = require("fs");
+const path = require("path");
+const db = require("../models");
 
 // tự slugify tiếng Việt (không cần thư viện)
 const toSlug = (str = "") => {
@@ -12,7 +12,7 @@ const toSlug = (str = "") => {
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove dấu
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -110,7 +110,6 @@ const deleteCategory = async (req, res) => {
   }
 };
 
-// ===== FLOWER LIST/DETAIL =====
 // ===== FLOWER LIST (supports categorySlug, search, sort) =====
 const getFlowers = async (req, res) => {
   try {
@@ -118,50 +117,34 @@ const getFlowers = async (req, res) => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 12)));
     const offset = (page - 1) * limit;
 
-    // query params
-    const {
-      category_id,
-      categorySlug,
-      search,
-      sort = "newest",
-      is_active,
-    } = req.query;
+    const { category_id, categorySlug, search, sort = "newest", is_active } = req.query;
 
     const where = {};
 
-    // is_active
     if (is_active !== undefined) {
       where.is_active = String(is_active) === "true" || String(is_active) === "1";
     }
 
-    // category filter (priority: categorySlug > category_id)
     if (categorySlug) {
       const cat = await db.Category.findOne({
         where: { slug: String(categorySlug).trim() },
         attributes: ["id"],
       });
 
-      // Nếu slug không tồn tại => trả empty (đúng kỳ vọng FE)
       if (!cat) {
-        return res.json({
-          pagination: { page, limit, total: 0, totalPages: 0 },
-          flowers: [],
-        });
+        return res.json({ pagination: { page, limit, total: 0, totalPages: 0 }, flowers: [] });
       }
       where.category_id = cat.id;
     } else if (category_id) {
       where.category_id = Number(category_id);
     }
 
-    // search by name (LIKE)
     if (search && String(search).trim()) {
       const kw = String(search).trim();
-      // MySQL/MariaDB: Op.like
       where.name = { [db.Sequelize.Op.like]: `%${kw}%` };
     }
 
-    // sort mapping
-    let order = [["id", "DESC"]]; // default newest
+    let order = [["id", "DESC"]];
     if (sort === "price_asc") order = [["price", "ASC"], ["id", "DESC"]];
     if (sort === "price_desc") order = [["price", "DESC"], ["id", "DESC"]];
     if (sort === "newest") order = [["id", "DESC"]];
@@ -182,7 +165,6 @@ const getFlowers = async (req, res) => {
       ],
     });
 
-    // sort images: cover first, then sort_order
     const flowers = rows.map((f) => {
       const json = f.toJSON();
       const imgs = Array.isArray(json.images) ? [...json.images] : [];
@@ -195,12 +177,7 @@ const getFlowers = async (req, res) => {
     });
 
     return res.json({
-      pagination: {
-        page,
-        limit,
-        total: count,
-        totalPages: Math.ceil(count / limit),
-      },
+      pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       flowers,
     });
   } catch (e) {
@@ -208,7 +185,6 @@ const getFlowers = async (req, res) => {
     return res.status(500).json({ message: e?.message || "Internal server error" });
   }
 };
-
 
 const getFlowerDetail = async (req, res) => {
   try {
@@ -372,7 +348,6 @@ const deleteFlowerImage = async (req, res) => {
 
     await img.destroy();
 
-    // nếu xoá cover thì tự set ảnh đầu tiên còn lại làm cover
     if (wasCover) {
       const first = await db.FlowerImage.findOne({
         where: { flower_id: flowerId },
@@ -396,7 +371,6 @@ const setFlowerImageCover = async (req, res) => {
     const img = await db.FlowerImage.findByPk(id);
     if (!img) return res.status(404).json({ message: "Image not found" });
 
-    // đảm bảo chỉ có 1 cover / 1 flower
     await db.FlowerImage.update({ is_cover: false }, { where: { flower_id: img.flower_id } });
     await img.update({ is_cover: true });
 
@@ -407,21 +381,18 @@ const setFlowerImageCover = async (req, res) => {
   }
 };
 
-export default {
-  // category
+module.exports = {
   getCategories,
   createCategory,
   updateCategory,
   deleteCategory,
 
-  // flower
   getFlowers,
   getFlowerDetail,
   createFlower,
   updateFlower,
   deleteFlower,
 
-  // images
   addFlowerImages,
   deleteFlowerImage,
   setFlowerImageCover,

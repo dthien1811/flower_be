@@ -1,7 +1,7 @@
 // src/middleware/uploadFlowerImages.js
-import multer from "multer";
-import path from "path";
-import fs from "fs";
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const dir = path.join(process.cwd(), "uploads", "flowers");
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -20,8 +20,10 @@ const fileFilter = (req, file, cb) => {
   cb(ok ? null : new Error("Only PNG/JPG/WEBP allowed"), ok);
 };
 
-export default multer({
+const uploadFlowerImages = multer({
   storage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
+module.exports = uploadFlowerImages;

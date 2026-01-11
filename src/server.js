@@ -1,16 +1,12 @@
-// ================================
-// FILE: be/src/server.js
-// ================================
-import express from "express";
-import bodyParser from "body-parser";
-import cookieParser from "cookie-parser";
-import path from "path";
-import dotenv from "dotenv";
+// be/src/server.js
+const express = require("express");
+const bodyParser = require("body-parser");
+const cookieParser = require("cookie-parser");
+const path = require("path");
+require("dotenv").config();
 
-import connection from "./config/connectDB";
-import flowerRoute from "./routes/flower";
-
-dotenv.config();
+const connection = require("./config/connectDB"); // ✅ giờ là function
+const flowerRoute = require("./routes/flower");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -21,10 +17,10 @@ app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
-// ✅ static uploads: để URL /uploads/... load được ảnh từ ổ đĩa
+// static uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// CORS (đổi origin theo FE bạn)
+// CORS
 const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
@@ -38,7 +34,7 @@ app.use((req, res, next) => {
 // health
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// ✅ API
+// API
 app.use("/api/flowers", flowerRoute);
 
 // 404
@@ -52,6 +48,6 @@ app.use((err, req, res, next) => {
 
 // start
 (async () => {
-  await connection();
-  app.listen(PORT, () => console.log(`Server running at: http://${HOSTNAME}:${PORT}`));
+  await connection(); // ✅ giờ gọi được
+  app.listen(PORT, () => console.log(`✅ Server running at: http://${HOSTNAME}:${PORT}`));
 })();

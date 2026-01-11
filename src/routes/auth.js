@@ -1,18 +1,15 @@
 /**
  * config all web routes
  */
-
-import express from "express";
-import authController from "../controllers/authController";
+const express = require("express");
+const authController = require("../controllers/authController");
 
 let router = express.Router();
 
 let authRoute = (app) => {
-  //----------------------
   router.post("/register", authController.handleRegister);
   router.post("/login", authController.handleLogin);
 
-  // ✅ logout: clear cookie jwt
   router.post("/logout", authController.handleLogout);
 
   router.post("/forgot-password", authController.handleForgotPassword);

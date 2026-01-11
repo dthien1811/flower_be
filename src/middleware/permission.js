@@ -1,7 +1,8 @@
-import {
+// src/middleware/permission.js
+const {
   getAllowedPrefixesByGroupId,
   checkPrefixPermission,
-} from "../service/JWTService";
+} = require("../service/JWTService");
 
 const defaultGetPath = (req) => `${req.baseUrl}${req.path}`;
 // Ví dụ: mount /admin + route /dashboard => /admin/dashboard

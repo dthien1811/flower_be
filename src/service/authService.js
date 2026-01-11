@@ -1,7 +1,7 @@
 // src/service/authService.js
-import db from "../models/index";
-import bcrypt from "bcryptjs";
-import jwtAction from "../middleware/JWTAction";
+const db = require("../models/index");
+const bcrypt = require("bcryptjs");
+const jwtAction = require("../middleware/JWTAction");
 
 const salt = bcrypt.genSaltSync(10);
 
@@ -42,7 +42,7 @@ const registerNewUser = async (rawUserData) => {
       username: rawUserData.username,
       password: hashPass,
       phone: rawUserData.phone,
-      groupId: 5, // mặc định Guest (bạn đang dùng 5)
+      groupId: 5,
     });
 
     return { EM: "A user is created successfully", EC: 0 };
@@ -54,9 +54,7 @@ const registerNewUser = async (rawUserData) => {
 
 const loginUser = async (userData) => {
   try {
-    let user = await db.User.findOne({
-      where: { email: userData.email },
-    });
+    let user = await db.User.findOne({ where: { email: userData.email } });
 
     if (!user) {
       return { EM: "User not found", EC: 1, DT: "" };
@@ -67,12 +65,6 @@ const loginUser = async (userData) => {
       return { EM: "Wrong password", EC: 1, DT: "" };
     }
 
-    // (Tuỳ chọn) chặn user inactive nếu bạn có cột status
-    // if (user.status && user.status !== "active") {
-    //   return { EM: "User is not active", EC: 1, DT: "" };
-    // }
-
-    // ✅ Payload phải có groupId để middleware permission dùng
     const payload = {
       id: user.id,
       email: user.email,

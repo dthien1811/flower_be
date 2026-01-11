@@ -1,4 +1,4 @@
-import db from "../models/index";
+const db = require("../models/index");
 
 // Lấy danh sách prefix url mà group này được phép truy cập
 const getAllowedPrefixesByGroupId = async (groupId) => {
