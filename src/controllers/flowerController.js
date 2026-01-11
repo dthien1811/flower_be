@@ -1,12 +1,23 @@
 // ================================
 // FILE: be/src/controllers/flowerController.js
-// (NO slugify package needed)
+// CLOUDINARY VERSION – FINAL
 // ================================
-const fs = require("fs");
-const path = require("path");
-const db = require("../models");
 
-// tự slugify tiếng Việt (không cần thư viện)
+const db = require("../models");
+const cloudinary = require("cloudinary").v2;
+
+// ================================
+// CLOUDINARY CONFIG
+// ================================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ================================
+// HELPERS
+// ================================
 const toSlug = (str = "") => {
   const s = String(str)
     .trim()
@@ -17,7 +28,6 @@ const toSlug = (str = "") => {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
-
   return s || `item-${Date.now()}`;
 };
 
@@ -32,64 +42,56 @@ const safeBool = (v, fallback = true) => {
   return fallback;
 };
 
-// ===== CATEGORY =====
+// ================================
+// CATEGORY
+// ================================
 const getCategories = async (req, res) => {
   try {
     const rows = await db.Category.findAll({
-      order: [
-        ["sort_order", "ASC"],
-        ["id", "ASC"],
-      ],
+      order: [["sort_order", "ASC"], ["id", "ASC"]],
     });
-    return res.json({ categories: rows });
+    res.json({ categories: rows });
   } catch (e) {
-    console.error("getCategories error:", e);
-    return res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
 const createCategory = async (req, res) => {
   try {
-    const { name, slug, sort_order, is_active } = req.body || {};
+    const { name, slug, sort_order, is_active } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: "Name required" });
-
-    const finalSlug = (slug?.trim() ? toSlug(slug) : toSlug(name)) || `cat-${Date.now()}`;
 
     const created = await db.Category.create({
       name: name.trim(),
-      slug: finalSlug,
+      slug: slug ? toSlug(slug) : toSlug(name),
       sort_order: safeNumber(sort_order, 0),
       is_active: safeBool(is_active, true),
     });
 
-    return res.json({ category: created });
+    res.json({ category: created });
   } catch (e) {
-    console.error("createCategory error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const updateCategory = async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { name, slug, sort_order, is_active } = req.body || {};
     const row = await db.Category.findByPk(id);
     if (!row) return res.status(404).json({ message: "Category not found" });
 
-    const finalName = name?.trim() || row.name;
-    const finalSlug = slug?.trim() ? toSlug(slug) : row.slug;
+    const { name, slug, sort_order, is_active } = req.body;
 
     await row.update({
-      name: finalName,
-      slug: finalSlug,
-      sort_order: safeNumber(sort_order, row.sort_order ?? 0),
-      is_active: is_active !== undefined ? safeBool(is_active, row.is_active ?? true) : row.is_active,
+      name: name?.trim() || row.name,
+      slug: slug ? toSlug(slug) : row.slug,
+      sort_order: safeNumber(sort_order, row.sort_order),
+      is_active: is_active !== undefined ? safeBool(is_active) : row.is_active,
     });
 
-    return res.json({ category: row });
+    res.json({ category: row });
   } catch (e) {
-    console.error("updateCategory error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
@@ -100,287 +102,199 @@ const deleteCategory = async (req, res) => {
     if (!row) return res.status(404).json({ message: "Category not found" });
 
     const count = await db.Flower.count({ where: { category_id: id } });
-    if (count > 0) return res.status(400).json({ message: "Cannot delete (category has flowers)" });
+    if (count > 0) return res.status(400).json({ message: "Category has flowers" });
 
     await row.destroy();
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
-    console.error("deleteCategory error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
-// ===== FLOWER LIST (supports categorySlug, search, sort) =====
+// ================================
+// FLOWERS
+// ================================
 const getFlowers = async (req, res) => {
   try {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 12)));
     const offset = (page - 1) * limit;
 
-    const { category_id, categorySlug, search, sort = "newest", is_active } = req.query;
-
     const where = {};
-
-    if (is_active !== undefined) {
-      where.is_active = String(is_active) === "true" || String(is_active) === "1";
+    if (req.query.is_active !== undefined) {
+      where.is_active = safeBool(req.query.is_active);
     }
 
-    if (categorySlug) {
-      const cat = await db.Category.findOne({
-        where: { slug: String(categorySlug).trim() },
-        attributes: ["id"],
-      });
-
-      if (!cat) {
-        return res.json({ pagination: { page, limit, total: 0, totalPages: 0 }, flowers: [] });
-      }
+    if (req.query.categorySlug) {
+      const cat = await db.Category.findOne({ where: { slug: req.query.categorySlug } });
+      if (!cat) return res.json({ pagination: { page, limit, total: 0, totalPages: 0 }, flowers: [] });
       where.category_id = cat.id;
-    } else if (category_id) {
-      where.category_id = Number(category_id);
     }
-
-    if (search && String(search).trim()) {
-      const kw = String(search).trim();
-      where.name = { [db.Sequelize.Op.like]: `%${kw}%` };
-    }
-
-    let order = [["id", "DESC"]];
-    if (sort === "price_asc") order = [["price", "ASC"], ["id", "DESC"]];
-    if (sort === "price_desc") order = [["price", "DESC"], ["id", "DESC"]];
-    if (sort === "newest") order = [["id", "DESC"]];
 
     const { count, rows } = await db.Flower.findAndCountAll({
       where,
       limit,
       offset,
-      order,
+      order: [["id", "DESC"]],
       include: [
-        { model: db.Category, as: "category", attributes: ["id", "name", "slug"] },
-        {
-          model: db.FlowerImage,
-          as: "images",
-          required: false,
-          attributes: ["id", "url", "alt", "is_cover", "sort_order"],
-        },
+        { model: db.Category, as: "category" },
+        { model: db.FlowerImage, as: "images" },
       ],
     });
 
-    const flowers = rows.map((f) => {
-      const json = f.toJSON();
-      const imgs = Array.isArray(json.images) ? [...json.images] : [];
-      imgs.sort(
-        (a, b) =>
-          Number(b.is_cover) - Number(a.is_cover) ||
-          Number(a.sort_order || 0) - Number(b.sort_order || 0)
-      );
-      return { ...json, images: imgs };
-    });
-
-    return res.json({
+    res.json({
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
-      flowers,
+      flowers: rows,
     });
   } catch (e) {
-    console.error("getFlowers error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const getFlowerDetail = async (req, res) => {
   try {
-    const slug = req.params.slug;
     const row = await db.Flower.findOne({
-      where: { slug },
+      where: { slug: req.params.slug },
       include: [
-        { model: db.Category, as: "category", attributes: ["id", "name", "slug"] },
-        {
-          model: db.FlowerImage,
-          as: "images",
-          required: false,
-          attributes: ["id", "url", "alt", "is_cover", "sort_order"],
-        },
+        { model: db.Category, as: "category" },
+        { model: db.FlowerImage, as: "images" },
       ],
     });
 
     if (!row) return res.status(404).json({ message: "Flower not found" });
-
-    const json = row.toJSON();
-    json.images = (json.images || []).sort(
-      (a, b) =>
-        Number(b.is_cover) - Number(a.is_cover) ||
-        safeNumber(a.sort_order, 0) - safeNumber(b.sort_order, 0)
-    );
-
-    return res.json({ flower: json });
+    res.json({ flower: row });
   } catch (e) {
-    console.error("getFlowerDetail error:", e);
-    return res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
-// ===== FLOWER CRUD =====
 const createFlower = async (req, res) => {
   try {
-    const { category_id, name, slug, description, short_description, price, sort_order, is_active } = req.body || {};
-    if (!name?.trim()) return res.status(400).json({ message: "Name required" });
-    if (!category_id) return res.status(400).json({ message: "Category required" });
+    const { name, category_id } = req.body;
+    if (!name || !category_id) return res.status(400).json({ message: "Missing data" });
 
-    const finalSlug = slug?.trim() ? toSlug(slug) : toSlug(name);
-
-    const created = await db.Flower.create({
-      category_id: Number(category_id),
-      name: name.trim(),
-      slug: finalSlug,
-      description: description || "",
-      short_description: short_description || "",
-      price: safeNumber(price, 0),
-      sort_order: safeNumber(sort_order, 0),
-      is_active: safeBool(is_active, true),
+    const flower = await db.Flower.create({
+      ...req.body,
+      slug: toSlug(req.body.slug || name),
+      price: safeNumber(req.body.price),
+      sort_order: safeNumber(req.body.sort_order),
+      is_active: safeBool(req.body.is_active),
     });
 
-    return res.json({ flower: created });
+    res.json({ flower });
   } catch (e) {
-    console.error("createFlower error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const updateFlower = async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const row = await db.Flower.findByPk(id);
+    const row = await db.Flower.findByPk(req.params.id);
     if (!row) return res.status(404).json({ message: "Flower not found" });
 
-    const { category_id, name, slug, description, short_description, price, sort_order, is_active } = req.body || {};
-    const finalName = name?.trim() || row.name;
-    const finalSlug = slug?.trim() ? toSlug(slug) : row.slug;
-
     await row.update({
-      category_id: category_id ? Number(category_id) : row.category_id,
-      name: finalName,
-      slug: finalSlug,
-      description: description ?? row.description,
-      short_description: short_description ?? row.short_description,
-      price: price !== undefined ? safeNumber(price, row.price) : row.price,
-      sort_order: sort_order !== undefined ? safeNumber(sort_order, row.sort_order ?? 0) : row.sort_order,
-      is_active: is_active !== undefined ? safeBool(is_active, row.is_active ?? true) : row.is_active,
+      ...req.body,
+      slug: req.body.slug ? toSlug(req.body.slug) : row.slug,
     });
 
-    return res.json({ flower: row });
+    res.json({ flower: row });
   } catch (e) {
-    console.error("updateFlower error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const deleteFlower = async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const row = await db.Flower.findByPk(id);
+    const row = await db.Flower.findByPk(req.params.id);
     if (!row) return res.status(404).json({ message: "Flower not found" });
 
-    const imgs = await db.FlowerImage.findAll({ where: { flower_id: id } });
-
-    for (const img of imgs) {
-      try {
-        const p = path.join(process.cwd(), img.url.replace(/^\//, ""));
-        if (fs.existsSync(p)) fs.unlinkSync(p);
-      } catch {}
+    const images = await db.FlowerImage.findAll({ where: { flower_id: row.id } });
+    for (const img of images) {
+      const publicId = img.url.split("/").slice(-2).join("/").split(".")[0];
+      await cloudinary.uploader.destroy(publicId);
       await img.destroy();
     }
 
     await row.destroy();
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
-    console.error("deleteFlower error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
-// ===== IMAGES =====
+// ================================
+// IMAGES (CLOUDINARY)
+// ================================
 const addFlowerImages = async (req, res) => {
   try {
-    const flowerId = Number(req.params.id);
-    const flower = await db.Flower.findByPk(flowerId);
+    const flower = await db.Flower.findByPk(req.params.id);
     if (!flower) return res.status(404).json({ message: "Flower not found" });
 
     const files = req.files || [];
     if (!files.length) return res.status(400).json({ message: "No files" });
 
-    const existingCount = await db.FlowerImage.count({ where: { flower_id: flowerId } });
+    const created = [];
 
-    const createdRows = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const url = `/uploads/flowers/${f.filename}`;
-
-      const created = await db.FlowerImage.create({
-        flower_id: flowerId,
-        url,
-        alt: f.originalname || flower.name || "flower",
-        is_cover: existingCount === 0 && i === 0 ? true : false,
-        sort_order: existingCount + i + 1,
+    for (const f of files) {
+      const upload = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { folder: "flowers" },
+          (err, result) => (err ? reject(err) : resolve(result))
+        ).end(f.buffer);
       });
 
-      createdRows.push(created);
+      const img = await db.FlowerImage.create({
+        flower_id: flower.id,
+        url: upload.secure_url,
+        alt: f.originalname || flower.name,
+        is_cover: false,
+        sort_order: 0,
+      });
+
+      created.push(img);
     }
 
-    return res.json({ images: createdRows });
+    res.json({ images: created });
   } catch (e) {
-    console.error("addFlowerImages error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const deleteFlowerImage = async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const img = await db.FlowerImage.findByPk(id);
+    const img = await db.FlowerImage.findByPk(req.params.id);
     if (!img) return res.status(404).json({ message: "Image not found" });
 
-    try {
-      const p = path.join(process.cwd(), img.url.replace(/^\//, ""));
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch {}
-
-    const flowerId = img.flower_id;
-    const wasCover = !!img.is_cover;
+    const publicId = img.url.split("/").slice(-2).join("/").split(".")[0];
+    await cloudinary.uploader.destroy(publicId);
 
     await img.destroy();
-
-    if (wasCover) {
-      const first = await db.FlowerImage.findOne({
-        where: { flower_id: flowerId },
-        order: [["id", "ASC"]],
-      });
-      if (first) await first.update({ is_cover: true });
-    }
-
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
-    console.error("deleteFlowerImage error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const setFlowerImageCover = async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ message: "Invalid image id" });
-
-    const img = await db.FlowerImage.findByPk(id);
+    const img = await db.FlowerImage.findByPk(req.params.id);
     if (!img) return res.status(404).json({ message: "Image not found" });
 
-    await db.FlowerImage.update({ is_cover: false }, { where: { flower_id: img.flower_id } });
-    await img.update({ is_cover: true });
+    await db.FlowerImage.update(
+      { is_cover: false },
+      { where: { flower_id: img.flower_id } }
+    );
 
-    return res.json({ ok: true, message: "Set cover success" });
+    await img.update({ is_cover: true });
+    res.json({ ok: true });
   } catch (e) {
-    console.error("setFlowerImageCover error:", e);
-    return res.status(500).json({ message: e?.message || "Internal server error" });
+    res.status(500).json({ message: e.message });
   }
 };
 
+// ================================
+// EXPORTS
+// ================================
 module.exports = {
   getCategories,
   createCategory,
